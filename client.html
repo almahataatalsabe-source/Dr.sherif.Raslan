@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بوابة المتابعة الخاصة بك</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f9f9f9; margin: 0; padding: 30px; color: #000; }
+        .container { max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+        h1 { color: #003300; text-align: center; }
+        .task-card { background: #f4f4f4; padding: 15px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .task-done { background: #e6f2e6; text-decoration: line-through; color: #555; }
+        button { background-color: #004d00; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
+        button:hover { background-color: #002200; }
+        .logout-btn { display: block; margin: 20px auto 0; background: #111; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>المهام المطلوبة منك</h1>
+        <div id="tasksList">جاري تحميل المهام...</div>
+        <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://eknnzobkfiwcodlqrwhn.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrbm56b2JrZml3Y29kbHFyd2huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwNTU3ODIsImV4cCI6MjEwMzYzMTc4Mn0.bT_AzaWrTeDgltPO3a4O9h6i9oc-J5JrOGmXv5kYiys';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function loadMyTasks() {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return window.location.href = 'index.html';
+
+            const { data, error } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
+            const list = document.getElementById('tasksList');
+            list.innerHTML = '';
+
+            if (data && data.length > 0) {
+                data.forEach(task => {
+                    const isDone = task.is_completed;
+                    list.innerHTML += `
+                        <div class="task-card ${isDone ? 'task-done' : ''}">
+                            <span>${task.description}</span>
+                            <button onclick="toggleTask('${task.id}', ${isDone})">
+                                ${isDone ? 'تراجع' : 'إتمام ✔️'}
+                            </button>
+                        </div>
+                    `;
+                });
+            } else {
+                list.innerHTML = '<p style="text-align:center;">لا توجد مهام مطلوبة منك حالياً.</p>';
+            }
+        }
+
+        async function toggleTask(taskId, currentStatus) {
+            await supabase.from('tasks').update({ is_completed: !currentStatus }).eq('id', taskId);
+            loadMyTasks(); // إعادة تحميل القائمة
+        }
+
+        async function logout() {
+            await supabase.auth.signOut();
+            window.location.href = 'index.html';
+        }
+
+        loadMyTasks();
+    </script>
+</body>
+</html>

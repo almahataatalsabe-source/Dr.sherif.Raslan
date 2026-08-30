@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة الإدارة - د. شريف رسلان</title>
+    <!-- استدعاء مكتبة Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f9f9f9; margin: 0; padding: 30px; color: #000; }
+        .container { max-width: 900px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+        h1, h2 { color: #003300; } /* أخضر داكن */
+        .header-flex { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
+        
+        .btn { background-color: #004d00; color: #fff; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 15px; }
+        .btn:hover { background-color: #002200; }
+        .btn-black { background-color: #111; }
+        .btn-black:hover { background-color: #333; }
+        
+        input, select, textarea { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 15px; }
+        textarea { resize: vertical; min-height: 100px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; }
+        th, td { padding: 15px; border-bottom: 1px solid #eee; text-align: right; }
+        th { background-color: #004d00; color: white; border-radius: 4px; }
+        tr:hover { background-color: #f4f4f4; }
+        .status-done { color: #004d00; font-weight: bold; }
+        .status-pending { color: #990000; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-flex">
+            <h1>لوحة تحكم الإدارة - المتابعة النفسية</h1>
+            <button class="btn btn-black" onclick="logout()">تسجيل الخروج</button>
+        </div>
+
+        <h2>إسناد مهمة جديدة</h2>
+        <select id="clientSelect">
+            <option value="">جاري تحميل بيانات العملاء...</option>
+        </select>
+        <textarea id="taskDesc" placeholder="اكتب تفاصيل المهمة أو الملاحظة هنا..."></textarea>
+        <button class="btn" onclick="addTask()">إضافة المهمة</button>
+
+        <h2 style="margin-top: 40px;">متابعة مهام العملاء</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>اسم العميل</th>
+                    <th>وصف المهمة</th>
+                    <th>حالة الإنجاز</th>
+                </tr>
+            </thead>
+            <tbody id="tasksTable">
+                <tr><td colspan="3">جاري تحميل المهام...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // نفس بيانات الربط لقاعدة البيانات
+        const SUPABASE_URL = 'https://eknnzobkfiwcodlqrwhn.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrbm56b2JrZml3Y29kbHFyd2huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwNTU3ODIsImV4cCI6MjEwMzYzMTc4Mn0.bT_AzaWrTeDgltPO3a4O9h6i9oc-J5JrOGmXv5kYiys';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // التحقق الصارم من صلاحيات الأدمن
+        async function checkAccess() {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return window.location.href = 'index.html';
+
+            const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+            if (!profile || profile.role !== 'admin') {
+                alert("غير مصرح لك بالوصول للوحة التحكم.");
+                window.location.href = 'index.html';
+            } else {
+                loadClients();
+                loadTasks();
+            }
+        }
+
+        // جلب قائمة العملاء فقط لإسناد المهام
+        async function loadClients() {
+            const { data, error } = await supabase.from('profiles').select('*').eq('role', 'client');
+            const select = document.getElementById('clientSelect');
+            select.innerHTML = '<option value="">اختر العميل...</option>';
+            if (data && data.length > 0) {
+                data.forEach(client => {
+                    select.innerHTML += `<option value="${client.id}">${client.name}</option>`;
+                });
+            } else {
+                select.innerHTML = '<option value="">لا يوجد عملاء مسجلين حالياً</option>';
+            }
+        }
+
+        // إرسال المهمة لقاعدة البيانات
+        async function addTask() {
+            const clientId = document.getElementById('clientSelect').value;
+            const desc = document.getElementById('taskDesc').value;
+            if (!clientId || !desc) return alert("يرجى اختيار العميل وكتابة تفاصيل المهمة.");
+
+            const { error } = await supabase.from('tasks').insert([{ client_id: clientId, description: desc }]);
+            if (error) {
+                alert("حدث خطأ أثناء الإضافة.");
+            } else {
+                alert("تم تسجيل المهمة بنجاح!");
+                document.getElementById('taskDesc').value = '';
+                loadTasks(); // تحديث الجدول تلقائياً
+            }
+        }
+
+        // جلب جميع المهام الخاصة بكل العملاء للأدمن
+        async function loadTasks() {
+            // سحب المهمة مع اسم العميل المرتبط بها
+            const { data, error } = await supabase.from('tasks').select('*, profiles(name)').order('created_at', { ascending: false });
+            const tbody = document.getElementById('tasksTable');
+            tbody.innerHTML = '';
+            
+            if (data && data.length > 0) {
+                data.forEach(task => {
+                    const statusText = task.is_completed ? "✅ مكتملة" : "⏳ قيد التنفيذ";
+                    const statusClass = task.is_completed ? "status-done" : "status-pending";
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${task.profiles.name}</td>
+                            <td>${task.description}</td>
+                            <td class="${statusClass}">${statusText}</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">لا توجد مهام مسجلة حتى الآن.</td></tr>';
+            }
+        }
+
+        // تسجيل الخروج والعودة لصفحة الدخول
+        async function logout() {
+            await supabase.auth.signOut();
+            window.location.href = 'index.html';
+        }
+
+        // تشغيل التحقق بمجرد فتح الصفحة
+        checkAccess();
+    </script>
+</body>
+</html>
