@@ -8,17 +8,20 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #f4f4f4; padding: 20px; color: #111; }
-        .container { max-width: 900px; margin: auto; }
+        .container { max-width: 1000px; margin: auto; }
         .card { background: #fff; padding: 25px; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 4px solid #004d00; }
         .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
         h1, h3 { color: #004d00; margin-top: 0; }
-        .btn { background-color: #004d00; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn { background-color: #004d00; color: #fff; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
         .btn:hover { background-color: #003300; }
         .btn-black { background-color: #111; }
         .btn-black:hover { background-color: #333; }
-        input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; margin-top: 5px; margin-bottom: 15px; box-sizing: border-box; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; margin-top: 5px; margin-bottom: 15px; box-sizing: border-box; }
         .flex-grid { display: flex; gap: 15px; }
         .flex-grid > div { flex: 1; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th { background-color: #004d00; color: white; padding: 10px; text-align: right; }
+        td { padding: 10px; border-bottom: 1px solid #eee; }
     </style>
 </head>
 <body>
@@ -29,35 +32,55 @@
             <button class="btn btn-black" onclick="logout()">تسجيل الخروج</button>
         </div>
 
-        <div class="card">
-            <h3>إضافة عميل جديد (يدوي)</h3>
-            <div class="flex-grid">
-                <div>
-                    <label>الاسم</label>
-                    <input type="text" id="c-name" placeholder="اسم العميل">
+        <div class="flex-grid">
+            <div class="card">
+                <h3>إضافة عميل جديد (يدوي)</h3>
+                <div class="flex-grid">
+                    <div><label>الاسم</label><input type="text" id="c-name"></div>
+                    <div><label>السن</label><input type="number" id="c-age"></div>
                 </div>
-                <div>
-                    <label>السن</label>
-                    <input type="number" id="c-age" placeholder="السن">
+                <div class="flex-grid">
+                    <div>
+                        <label>النوع</label>
+                        <select id="c-gender"><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option></select>
+                    </div>
+                    <div><label>الهدف</label><input type="text" id="c-goal"></div>
                 </div>
-                <div>
-                    <label>النوع</label>
-                    <select id="c-gender">
-                        <option value="ذكر">ذكر</option>
-                        <option value="أنثى">أنثى</option>
-                    </select>
-                </div>
+                <button class="btn" onclick="addClientManual()">حفظ العميل</button>
             </div>
-            <label>الهدف</label>
-            <input type="text" id="c-goal" placeholder="الهدف من المتابعة">
-            <button class="btn" onclick="addClientManual()">حفظ العميل</button>
+
+            <div class="card">
+                <h3>رفع بيانات (شيت إكسيل)</h3>
+                <p style="font-size: 13px; color: #555;">الأعمدة: الاسم، السن، النوع، الهدف.</p>
+                <input type="file" id="excel-file" accept=".xlsx, .xls">
+                <button class="btn btn-black" onclick="uploadExcel()">رفع البيانات</button>
+            </div>
         </div>
 
         <div class="card">
-            <h3>إضافة عملاء (شيت إكسيل)</h3>
-            <p style="font-size: 14px; color: #555;">يجب أن يحتوي الشيت على الأعمدة التالية بالترتيب: الاسم، السن، النوع، الهدف.</p>
-            <input type="file" id="excel-file" accept=".xlsx, .xls">
-            <button class="btn btn-black" onclick="uploadExcel()">رفع البيانات</button>
+            <h3>قائمة العملاء (لنسخ الروابط وإضافة المهام)</h3>
+            <table>
+                <thead><tr><th>الاسم</th><th>الهدف</th><th>الرابط المباشر</th><th>إجراءات</th></tr></thead>
+                <tbody id="clients-body"></tbody>
+            </table>
+        </div>
+
+        <div class="flex-grid">
+            <div class="card">
+                <h3>متابعة المهام</h3>
+                <table>
+                    <thead><tr><th>العميل</th><th>المهمة</th><th>الحالة</th></tr></thead>
+                    <tbody id="tasks-body"></tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h3>سجل الدخول (آخر 10 زيارات)</h3>
+                <table>
+                    <thead><tr><th>العميل</th><th>وقت الدخول</th></tr></thead>
+                    <tbody id="logs-body"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -69,7 +92,14 @@
         window.onload = async () => {
             const { data: { user } } = await sbClient.auth.getUser();
             if (!user) window.location.href = 'index.html';
+            refreshAll();
         };
+
+        function refreshAll() {
+            loadClients();
+            loadTasks();
+            loadLogs();
+        }
 
         async function logout() {
             await sbClient.auth.signOut();
@@ -81,46 +111,71 @@
             const age = document.getElementById('c-age').value;
             const gender = document.getElementById('c-gender').value;
             const goal = document.getElementById('c-goal').value;
-
-            if (!name) { alert('برجاء كتابة اسم العميل'); return; }
-
-            const { error } = await sbClient.from('client_records').insert([{ name, age, gender, goal }]);
-            if (error) alert('حدث خطأ أثناء الحفظ');
-            else {
-                alert('تمت إضافة العميل بنجاح');
-                document.getElementById('c-name').value = '';
-                document.getElementById('c-age').value = '';
-                document.getElementById('c-goal').value = '';
-            }
+            if (!name) return alert('اكتب اسم العميل!');
+            await sbClient.from('client_records').insert([{ name, age, gender, goal }]);
+            refreshAll();
         }
 
         function uploadExcel() {
-            const fileInput = document.getElementById('excel-file');
-            if (!fileInput.files.length) { alert('برجاء اختيار ملف إكسيل أولاً'); return; }
-
+            const file = document.getElementById('excel-file').files[0];
+            if (!file) return alert('اختر الملف!');
             const reader = new FileReader();
             reader.onload = async (e) => {
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-
-                const formattedData = jsonData.map(row => ({
-                    name: row['الاسم'],
-                    age: String(row['السن'] || ''),
-                    gender: row['النوع'] || 'غير محدد',
-                    goal: row['الهدف'] || ''
-                })).filter(item => item.name);
-
-                if (formattedData.length === 0) { alert('الملف فارغ أو لا يحتوي على عمود "الاسم"'); return; }
-
-                const { error } = await sbClient.from('client_records').insert(formattedData);
-                if (error) alert('حدث خطأ أثناء رفع بيانات الإكسيل');
-                else alert(`تم رفع بيانات ${formattedData.length} عميل بنجاح`);
-                
-                fileInput.value = '';
+                const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                const formatted = jsonData.map(r => ({ name: r['الاسم'], age: String(r['السن']||''), gender: r['النوع']||'', goal: r['الهدف']||'' })).filter(i => i.name);
+                await sbClient.from('client_records').insert(formatted);
+                refreshAll();
             };
-            reader.readAsArrayBuffer(fileInput.files[0]);
+            reader.readAsArrayBuffer(file);
+        }
+
+        async function loadClients() {
+            const { data } = await sbClient.from('client_records').select('*').order('created_at', { ascending: false });
+            const tbody = document.getElementById('clients-body');
+            tbody.innerHTML = '';
+            if(data) data.forEach(c => {
+                tbody.innerHTML += `<tr>
+                    <td>${c.name}</td><td>${c.goal}</td>
+                    <td><button class="btn" style="padding: 5px 10px; font-size:12px;" onclick="copyLink('${c.access_token}')">نسخ الرابط</button></td>
+                    <td><button class="btn btn-black" style="padding: 5px 10px; font-size:12px;" onclick="askTask('${c.id}', '${c.name}')">+ إضافة مهمة</button></td>
+                </tr>`;
+            });
+        }
+
+        function copyLink(token) {
+            const url = window.location.href.split('?')[0].replace('admin.html', '') + 'client.html?token=' + token;
+            navigator.clipboard.writeText(url).then(() => alert('تم نسخ الرابط السحري للعميل بنجاح!'));
+        }
+
+        async function askTask(id, name) {
+            const desc = prompt(`اكتب المهمة المطلوبة من العميل (${name}):`);
+            if (desc && desc.trim()) {
+                await sbClient.from('tasks').insert([{ client_id: id, description: desc, status: 'pending' }]);
+                loadTasks();
+            }
+        }
+
+        async function loadTasks() {
+            const { data } = await sbClient.from('tasks').select('*, client_records(name)').order('created_at', { ascending: false });
+            const tbody = document.getElementById('tasks-body');
+            tbody.innerHTML = '';
+            if(data) data.forEach(t => {
+                const cName = t.client_records ? t.client_records.name : '-';
+                const st = t.status === 'completed' ? '✅ مكتملة' : '⏳ جارية';
+                tbody.innerHTML += `<tr><td>${cName}</td><td>${t.description}</td><td>${st}</td></tr>`;
+            });
+        }
+
+        async function loadLogs() {
+            const { data } = await sbClient.from('access_logs').select('*').order('accessed_at', { ascending: false }).limit(10);
+            const tbody = document.getElementById('logs-body');
+            tbody.innerHTML = '';
+            if(data) data.forEach(l => {
+                const d = new Date(l.accessed_at).toLocaleString('ar-EG');
+                tbody.innerHTML += `<tr><td>${l.client_name}</td><td dir="ltr" style="font-size:13px;">${d}</td></tr>`;
+            });
         }
     </script>
 </body>
