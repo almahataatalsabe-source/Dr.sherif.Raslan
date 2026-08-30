@@ -168,10 +168,19 @@
         }
 
         async function deleteClient(id, name) {
-            if(confirm(`هل أنت متأكد من حذف العميل (${name}) نهائياً؟ (سيتم مسح كل مهامه أيضاً)`)) {
+            if(confirm(`هل أنت متأكد من حذف العميل (${name}) نهائياً؟ (سيتم مسح كل مهامه وسجل دخوله أيضاً)`)) {
+                
+                // مسح سجل دخول العميل من الأرشيف
+                await sbClient.from('access_logs').delete().eq('client_name', name);
+                
+                // مسح بيانات العميل (المهام المرتبطة به ستُحذف تلقائياً)
                 const { error } = await sbClient.from('client_records').delete().eq('id', id);
-                if (error) alert('خطأ في الحذف: ' + error.message);
-                else refreshAll();
+                
+                if (error) {
+                    alert('خطأ في الحذف: ' + error.message);
+                } else {
+                    refreshAll();
+                }
             }
         }
 
