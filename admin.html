@@ -112,7 +112,14 @@
             const gender = document.getElementById('c-gender').value;
             const goal = document.getElementById('c-goal').value;
             if (!name) return alert('اكتب اسم العميل!');
+            
             await sbClient.from('client_records').insert([{ name, age, gender, goal }]);
+            
+            // تفريغ الحقول بعد الحفظ
+            document.getElementById('c-name').value = '';
+            document.getElementById('c-age').value = '';
+            document.getElementById('c-goal').value = '';
+            
             refreshAll();
         }
 
@@ -124,9 +131,21 @@
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                const formatted = jsonData.map(r => ({ name: r['الاسم'], age: String(r['السن']||''), gender: r['النوع']||'', goal: r['الهدف']||'' })).filter(i => i.name);
-                await sbClient.from('client_records').insert(formatted);
-                refreshAll();
+                const formatted = jsonData.map(r => ({ 
+                    name: r['الاسم'], 
+                    age: String(r['السن']||''), 
+                    gender: r['النوع']||'', 
+                    goal: r['الهدف']||'' 
+                })).filter(i => i.name);
+                
+                if (formatted.length > 0) {
+                    await sbClient.from('client_records').insert(formatted);
+                    alert(`تم رفع بيانات ${formatted.length} عميل بنجاح!`);
+                    document.getElementById('excel-file').value = '';
+                    refreshAll();
+                } else {
+                    alert('تأكد من وجود عمود "الاسم" في ملف الإكسيل.');
+                }
             };
             reader.readAsArrayBuffer(file);
         }
@@ -145,15 +164,29 @@
         }
 
         function copyLink(token) {
-            const url = window.location.href.split('?')[0].replace('admin.html', '') + 'client.html?token=' + token;
-            navigator.clipboard.writeText(url).then(() => alert('تم نسخ الرابط السحري للعميل بنجاح!'));
+            // سحب الرابط الأساسي للموقع فقط لضمان عدم تداخل الكلمات
+            const baseUrl = window.location.origin;
+            const url = baseUrl + '/client.html?token=' + token;
+            
+            navigator.clipboard.writeText(url).then(() => {
+                alert('تم نسخ الرابط السحري للعميل بنجاح!\n' + url);
+            });
         }
 
         async function askTask(id, name) {
             const desc = prompt(`اكتب المهمة المطلوبة من العميل (${name}):`);
             if (desc && desc.trim()) {
-                await sbClient.from('tasks').insert([{ client_id: id, description: desc, status: 'pending' }]);
-                loadTasks();
+                const { error } = await sbClient.from('tasks').insert([{ 
+                    client_id: id, 
+                    description: desc, 
+                    status: 'pending' 
+                }]);
+                
+                if (error) {
+                    alert('حصلت مشكلة في إضافة المهمة: ' + error.message);
+                } else {
+                    loadTasks();
+                }
             }
         }
 
@@ -164,7 +197,7 @@
             if(data) data.forEach(t => {
                 const cName = t.client_records ? t.client_records.name : '-';
                 const st = t.status === 'completed' ? '✅ مكتملة' : '⏳ جارية';
-                tbody.innerHTML += `<tr><td>${cName}</td><td>${t.description}</td><td>${st}</td></tr>`;
+                tbody.innerHTML += `<tr><td>${cName}</td><td>${t.description}</td><td style="font-weight: bold; color: ${t.status === 'completed' ? '#004d00' : '#d97706'};">${st}</td></tr>`;
             });
         }
 
