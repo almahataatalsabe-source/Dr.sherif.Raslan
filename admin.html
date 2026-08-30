@@ -3,59 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة الإدارة - المتابعة النفسية</title>
+    <title>لوحة الإدارة - المتابعة</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f9f9f9; padding: 20px; }
-        .container { background: white; max-width: 800px; margin: auto; padding: 30px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 20px; margin-bottom: 20px; }
-        .header h1 { color: #003300; font-size: 24px; }
-        .logout-btn { background-color: #111; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        .logout-btn:hover { background-color: #333; }
-        .form-group { margin-bottom: 15px; }
-        select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; margin-top: 5px; box-sizing: border-box; }
-        .submit-btn { background-color: #004d00; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; float: left; font-weight: bold; }
-        .submit-btn:hover { background-color: #002200; }
-        .clearfix::after { content: ""; clear: both; display: table; }
-        table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-        th { background-color: #004d00; color: white; padding: 12px; text-align: right; }
-        td { padding: 12px; border-bottom: 1px solid #eee; }
+        body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #f4f4f4; padding: 20px; color: #111; }
+        .container { max-width: 900px; margin: auto; }
+        .card { background: #fff; padding: 25px; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 4px solid #004d00; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
+        h1, h3 { color: #004d00; margin-top: 0; }
+        .btn { background-color: #004d00; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn:hover { background-color: #003300; }
+        .btn-black { background-color: #111; }
+        .btn-black:hover { background-color: #333; }
+        input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; margin-top: 5px; margin-bottom: 15px; box-sizing: border-box; }
+        .flex-grid { display: flex; gap: 15px; }
+        .flex-grid > div { flex: 1; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <div class="header">
-            <h1>لوحة تحكم الإدارة - المتابعة النفسية</h1>
-            <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+        <div class="card header">
+            <h1>لوحة الإدارة</h1>
+            <button class="btn btn-black" onclick="logout()">تسجيل الخروج</button>
         </div>
 
-        <h3 style="color: #003300;">إسناد مهمة جديدة</h3>
-        <div class="form-group">
-            <select id="client-select">
-                <option value="">جاري تحميل بيانات العملاء...</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <textarea id="task-desc" rows="4" placeholder="اكتب تفاصيل المهمة أو الملاحظة هنا..."></textarea>
-        </div>
-        <div class="clearfix">
-            <button class="submit-btn" onclick="addTask()">إضافة المهمة</button>
+        <div class="card">
+            <h3>إضافة عميل جديد (يدوي)</h3>
+            <div class="flex-grid">
+                <div>
+                    <label>الاسم</label>
+                    <input type="text" id="c-name" placeholder="اسم العميل">
+                </div>
+                <div>
+                    <label>السن</label>
+                    <input type="number" id="c-age" placeholder="السن">
+                </div>
+                <div>
+                    <label>النوع</label>
+                    <select id="c-gender">
+                        <option value="ذكر">ذكر</option>
+                        <option value="أنثى">أنثى</option>
+                    </select>
+                </div>
+            </div>
+            <label>الهدف</label>
+            <input type="text" id="c-goal" placeholder="الهدف من المتابعة">
+            <button class="btn" onclick="addClientManual()">حفظ العميل</button>
         </div>
 
-        <h3 style="color: #003300; margin-top: 40px;">متابعة مهام العملاء</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>اسم العميل</th>
-                    <th>وصف المهمة</th>
-                    <th>حالة الإنجاز</th>
-                </tr>
-            </thead>
-            <tbody id="tasks-body">
-                <tr><td colspan="3" style="text-align: center;">جاري تحميل المهام...</td></tr>
-            </tbody>
-        </table>
+        <div class="card">
+            <h3>إضافة عملاء (شيت إكسيل)</h3>
+            <p style="font-size: 14px; color: #555;">يجب أن يحتوي الشيت على الأعمدة التالية بالترتيب: الاسم، السن، النوع، الهدف.</p>
+            <input type="file" id="excel-file" accept=".xlsx, .xls">
+            <button class="btn btn-black" onclick="uploadExcel()">رفع البيانات</button>
+        </div>
     </div>
 
     <script>
@@ -65,12 +68,7 @@
 
         window.onload = async () => {
             const { data: { user } } = await sbClient.auth.getUser();
-            if (!user) {
-                window.location.href = 'index.html';
-                return;
-            }
-            loadClients();
-            loadTasks();
+            if (!user) window.location.href = 'index.html';
         };
 
         async function logout() {
@@ -78,59 +76,51 @@
             window.location.href = 'index.html';
         }
 
-        async function loadClients() {
-            const { data, error } = await sbClient.from('profiles').select('*').neq('role', 'admin');
-            const select = document.getElementById('client-select');
-            if (error || !data || data.length === 0) {
-                select.innerHTML = '<option value="">لا يوجد عملاء مضافين حالياً</option>';
-                return;
+        async function addClientManual() {
+            const name = document.getElementById('c-name').value;
+            const age = document.getElementById('c-age').value;
+            const gender = document.getElementById('c-gender').value;
+            const goal = document.getElementById('c-goal').value;
+
+            if (!name) { alert('برجاء كتابة اسم العميل'); return; }
+
+            const { error } = await sbClient.from('client_records').insert([{ name, age, gender, goal }]);
+            if (error) alert('حدث خطأ أثناء الحفظ');
+            else {
+                alert('تمت إضافة العميل بنجاح');
+                document.getElementById('c-name').value = '';
+                document.getElementById('c-age').value = '';
+                document.getElementById('c-goal').value = '';
             }
-            select.innerHTML = '<option value="">اختر العميل...</option>';
-            data.forEach(client => {
-                select.innerHTML += `<option value="${client.id}">${client.name}</option>`;
-            });
         }
 
-        async function loadTasks() {
-            const { data, error } = await sbClient.from('tasks').select('*, profiles(name)').order('created_at', { ascending: false });
-            const tbody = document.getElementById('tasks-body');
-            if (error || !data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">لا توجد مهام حالياً</td></tr>';
-                return;
-            }
-            tbody.innerHTML = '';
-            data.forEach(task => {
-                const clientName = task.profiles ? task.profiles.name : 'غير معروف';
-                const statusText = task.status === 'completed' ? '✅ مكتملة' : '⏳ قيد التنفيذ';
-                tbody.innerHTML += `<tr>
-                    <td>${clientName}</td>
-                    <td>${task.description}</td>
-                    <td style="font-weight: bold; color: ${task.status === 'completed' ? '#004d00' : '#d97706'};">${statusText}</td>
-                </tr>`;
-            });
-        }
+        function uploadExcel() {
+            const fileInput = document.getElementById('excel-file');
+            if (!fileInput.files.length) { alert('برجاء اختيار ملف إكسيل أولاً'); return; }
 
-        async function addTask() {
-            const clientId = document.getElementById('client-select').value;
-            const desc = document.getElementById('task-desc').value;
-            
-            if (!clientId || !desc.trim()) {
-                alert('الرجاء اختيار العميل وكتابة تفاصيل المهمة!');
-                return;
-            }
-            
-            const { error } = await sbClient.from('tasks').insert([{ 
-                client_id: clientId, 
-                description: desc, 
-                status: 'pending' 
-            }]);
-            
-            if (error) {
-                alert('حصلت مشكلة في إضافة المهمة، راجع صلاحيات قاعدة البيانات.');
-            } else {
-                document.getElementById('task-desc').value = '';
-                loadTasks();
-            }
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+                const formattedData = jsonData.map(row => ({
+                    name: row['الاسم'],
+                    age: String(row['السن'] || ''),
+                    gender: row['النوع'] || 'غير محدد',
+                    goal: row['الهدف'] || ''
+                })).filter(item => item.name);
+
+                if (formattedData.length === 0) { alert('الملف فارغ أو لا يحتوي على عمود "الاسم"'); return; }
+
+                const { error } = await sbClient.from('client_records').insert(formattedData);
+                if (error) alert('حدث خطأ أثناء رفع بيانات الإكسيل');
+                else alert(`تم رفع بيانات ${formattedData.length} عميل بنجاح`);
+                
+                fileInput.value = '';
+            };
+            reader.readAsArrayBuffer(fileInput.files[0]);
         }
     </script>
 </body>
