@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>لوحة الإدارة - المتابعة</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #f4f4f4; padding: 20px; color: #111; }
         .container { max-width: 1100px; margin: auto; }
@@ -12,12 +13,13 @@
         .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
         h1, h3 { color: #004d00; margin-top: 0; }
         .btn { background-color: #004d00; color: #fff; padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-left: 5px; }
+        .btn:hover { background-color: #003300; }
         .btn-black { background-color: #111; }
+        .btn-red { background-color: #b30000; }
         .btn-blue { background-color: #004080; position: relative;}
-        /* إشعار العملاء في الإدارة */
-        .notification-dot { position: absolute; top: -5px; right: -5px; background: #b30000; width: 12px; height: 12px; border-radius: 50%; display: none; animation: pulse 1s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
-        
+        input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; margin-top: 5px; margin-bottom: 15px; box-sizing: border-box; }
+        .flex-grid { display: flex; gap: 15px; }
+        .flex-grid > div { flex: 1; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px;}
         th { background-color: #004d00; color: white; padding: 10px; text-align: right; }
         td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
@@ -26,6 +28,10 @@
         .progress-control { display: flex; align-items: center; gap: 5px; }
         .progress-control input[type="range"] { width: 80px; accent-color: #004d00; }
         .progress-control span { font-weight: bold; width: 35px; text-align: center;}
+        
+        /* إشعار العملاء في الإدارة */
+        .notification-dot { position: absolute; top: -5px; right: -5px; background: #b30000; width: 12px; height: 12px; border-radius: 50%; display: none; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
         
         /* شات الإدارة مع زر الـ AI */
         #admin-chat-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 450px; background: white; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 2000; flex-direction: column; overflow: hidden; border: 2px solid #004d00; }
@@ -45,7 +51,6 @@
 </head>
 <body>
 
-    <!-- ملف التنبيه للإدارة -->
     <audio id="admin-notify-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
 
     <div id="overlay" onclick="closeChat()"></div>
@@ -68,12 +73,52 @@
             <button class="btn btn-black" onclick="logout()">تسجيل الخروج</button>
         </div>
 
+        <div class="flex-grid">
+            <div class="card">
+                <h3>إضافة عميل جديد (يدوي)</h3>
+                <div class="flex-grid">
+                    <div><label>الاسم</label><input type="text" id="c-name"></div>
+                    <div><label>السن</label><input type="number" id="c-age"></div>
+                </div>
+                <div class="flex-grid">
+                    <div><label>النوع</label><select id="c-gender"><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option></select></div>
+                    <div><label>الهدف</label><input type="text" id="c-goal"></div>
+                </div>
+                <button class="btn" onclick="addClientManual()">حفظ العميل</button>
+            </div>
+
+            <div class="card">
+                <h3>رفع بيانات (شيت إكسيل)</h3>
+                <p style="font-size: 13px; color: #555;">الأعمدة: الاسم، السن، النوع، الهدف.</p>
+                <input type="file" id="excel-file" accept=".xlsx, .xls">
+                <button class="btn btn-black" onclick="uploadExcel()">رفع البيانات</button>
+            </div>
+        </div>
+
         <div class="card">
             <h3>قائمة العملاء ومؤشر الالتزام</h3>
             <table>
                 <thead><tr><th>الاسم</th><th>الهدف</th><th>مؤشر الالتزام</th><th>إجراءات التواصل والمهام</th></tr></thead>
                 <tbody id="clients-body"></tbody>
             </table>
+        </div>
+
+        <div class="flex-grid">
+            <div class="card">
+                <h3>متابعة المهام</h3>
+                <table>
+                    <thead><tr><th>العميل</th><th>المهمة</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+                    <tbody id="tasks-body"></tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h3>سجل الدخول (آخر 10 زيارات)</h3>
+                <table>
+                    <thead><tr><th>العميل</th><th>وقت الدخول</th></tr></thead>
+                    <tbody id="logs-body"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -90,9 +135,50 @@
         window.onload = async () => {
             const { data: { user } } = await sbClient.auth.getUser();
             if (!user) window.location.href = 'index.html';
-            loadClients();
-            setInterval(checkAllMessages, 5000); // فحص مستمر للرسايل
+            refreshAll();
+            setInterval(checkAllMessages, 5000); 
         };
+
+        function refreshAll() {
+            loadClients();
+            loadTasks();
+            loadLogs();
+        }
+
+        async function logout() { await sbClient.auth.signOut(); window.location.href = 'index.html'; }
+
+        async function addClientManual() {
+            const name = document.getElementById('c-name').value;
+            const age = document.getElementById('c-age').value;
+            const gender = document.getElementById('c-gender').value;
+            const goal = document.getElementById('c-goal').value;
+            if (!name) return alert('اكتب اسم العميل!');
+            await sbClient.from('client_records').insert([{ name, age, gender, goal }]);
+            document.getElementById('c-name').value = '';
+            document.getElementById('c-age').value = '';
+            document.getElementById('c-goal').value = '';
+            refreshAll();
+        }
+
+        function uploadExcel() {
+            const file = document.getElementById('excel-file').files[0];
+            if (!file) return alert('اختر الملف!');
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                const formatted = jsonData.map(r => ({ name: r['الاسم'], age: String(r['السن']||''), gender: r['النوع']||'', goal: r['الهدف']||'' })).filter(i => i.name);
+                
+                if (formatted.length > 0) {
+                    await sbClient.from('client_records').insert(formatted);
+                    alert(`تم رفع بيانات ${formatted.length} عميل بنجاح!`);
+                    document.getElementById('excel-file').value = '';
+                    refreshAll();
+                } else alert('تأكد من وجود عمود "الاسم".');
+            };
+            reader.readAsArrayBuffer(file);
+        }
 
         async function loadClients() {
             const { data } = await sbClient.from('client_records').select('*').order('created_at', { ascending: false });
@@ -102,7 +188,7 @@
                 const prog = c.progress || 0;
                 if(clientsMessageCounts[c.id] === undefined) clientsMessageCounts[c.id] = 0;
                 
-                tbody.innerHTML += `<tr id="client-row-${c.id}">
+                tbody.innerHTML += `<tr>
                     <td><strong>${c.name}</strong></td>
                     <td>${c.goal}</td>
                     <td>
@@ -112,25 +198,21 @@
                         </div>
                     </td>
                     <td>
-                        <button class="btn btn-blue" onclick="openChat('${c.id}', '${c.name}', ${prog})">
-                            💬 محادثة <div class="notification-dot" id="dot-${c.id}"></div>
-                        </button>
-                        <button class="btn btn-black" onclick="askTask('${c.id}', '${c.name}')">+ مهمة</button>
-                        <button class="btn" style="background-color: #555;" onclick="copyLink('${c.access_token}')">رابط</button>
+                        <button class="btn btn-blue" style="font-size:12px;" onclick="openChat('${c.id}', '${c.name}', ${prog})">💬 محادثة <div class="notification-dot" id="dot-${c.id}"></div></button>
+                        <button class="btn btn-black" style="font-size:12px;" onclick="askTask('${c.id}', '${c.name}')">+ مهمة</button>
+                        <button class="btn" style="background-color: #555; font-size:12px;" onclick="copyLink('${c.access_token}')">الرابط</button>
+                        <button class="btn" style="background-color: #888; font-size:12px;" onclick="resetDevice('${c.id}', '${c.name}')">فك الجهاز</button>
+                        <button class="btn btn-red" style="font-size:12px;" onclick="deleteClient('${c.id}', '${c.name}')">حذف</button>
                     </td>
                 </tr>`;
             });
         }
 
-        async function updateProgress(id, val) {
-            await sbClient.from('client_records').update({ progress: parseInt(val) }).eq('id', id);
-        }
+        async function updateProgress(id, val) { await sbClient.from('client_records').update({ progress: parseInt(val) }).eq('id', id); }
 
-        // --- نظام الإشعارات الخلفية للإدارة ---
         async function checkAllMessages() {
             const { data } = await sbClient.from('messages').select('client_id, id');
             if(!data) return;
-            
             let playSound = false;
             let counts = {};
             data.forEach(m => counts[m.client_id] = (counts[m.client_id] || 0) + 1);
@@ -141,16 +223,13 @@
                     if (activeChatClientId !== cId) {
                         const dot = document.getElementById(`dot-${cId}`);
                         if(dot) dot.style.display = 'block';
-                    } else {
-                        loadAdminMessages(); // لو الشات مفتوح، حدثه
-                    }
+                    } else loadAdminMessages();
                 }
                 clientsMessageCounts[cId] = counts[cId];
             }
             if(playSound) document.getElementById('admin-notify-sound').play().catch(e=>{});
         }
 
-        // --- نظام الشات وتوليد الـ AI ---
         function openChat(id, name, prog) {
             activeChatClientId = id;
             activeChatClientName = name;
@@ -158,10 +237,8 @@
             document.getElementById('chat-client-name').innerText = 'محادثة: ' + name;
             document.getElementById('overlay').style.display = 'block';
             document.getElementById('admin-chat-modal').style.display = 'flex';
-            
             const dot = document.getElementById(`dot-${id}`);
             if(dot) dot.style.display = 'none';
-            
             loadAdminMessages();
         }
 
@@ -194,38 +271,56 @@
             await sbClient.from('messages').insert([{ client_id: activeChatClientId, sender: 'admin', message: text }]);
             loadAdminMessages();
         }
-
         document.getElementById('admin-chat-input').addEventListener('keypress', e => { if(e.key === 'Enter') sendAdminMessage(); });
 
-        // --- المساعد الذكي لتوليد الردود (AI Local Logic) ---
         function generateAIResponse() {
             const prog = activeChatClientProgress;
             const name = activeChatClientName;
             const prompts = {
-                low: [
-                    `أهلاً يا ${name}، البدايات دايماً بتحتاج مجهود، أنا معاك خطوة بخطوة لحد ما نوصل لهدفك! 🎯`,
-                    `عاش يا ${name} على اللي فات، بس محتاجين نزود التزامنا شوية الأيام الجاية عشان نشوف نتيجة أسرع! 💪`
-                ],
-                mid: [
-                    `ما شاء الله يا ${name}، إنت ماشي على التراك الصح ووصلت لـ ${prog}% التزام، كمل وماتوقفش! 🔥`,
-                    `مبسوط جداً بتقدمك يا ${name}، النص الصعب عدى، خليك مركز في اللي جاي عشان النتيجة قربت تظهر 👏`
-                ],
-                high: [
-                    `أداء مبهر يا ${name}! نسبة التزامك ${prog}% دي مش أي حد بيوصلها، فخور بيك جداً 👑`,
-                    `بطل كالعادة يا ${name}، الاستمرارية دي هي اللي بتصنع الفرق الحقيقي، استمر على نفس القوة! 🚀`
-                ]
+                low: [`أهلاً يا ${name}، البدايات دايماً بتحتاج مجهود، أنا معاك خطوة بخطوة لحد ما نوصل لهدفك! 🎯`, `عاش يا ${name} على اللي فات، بس محتاجين نزود التزامنا شوية الأيام الجاية عشان نشوف نتيجة أسرع! 💪`],
+                mid: [`ما شاء الله يا ${name}، إنت ماشي على التراك الصح ووصلت لـ ${prog}% التزام، كمل وماتوقفش! 🔥`, `مبسوط جداً بتقدمك يا ${name}، النص الصعب عدى، خليك مركز في اللي جاي عشان النتيجة قربت تظهر 👏`],
+                high: [`أداء مبهر يا ${name}! نسبة التزامك ${prog}% دي مش أي حد بيوصلها، فخور بيك جداً 👑`, `بطل كالعادة يا ${name}، الاستمرارية دي هي اللي بتصنع الفرق الحقيقي، استمر على نفس القوة! 🚀`]
             };
-
             let selectedArray = prog < 40 ? prompts.low : (prog < 80 ? prompts.mid : prompts.high);
-            let randomMsg = selectedArray[Math.floor(Math.random() * selectedArray.length)];
-            
-            document.getElementById('admin-chat-input').value = randomMsg;
+            document.getElementById('admin-chat-input').value = selectedArray[Math.floor(Math.random() * selectedArray.length)];
             document.getElementById('admin-chat-input').focus();
         }
-        
+
+        async function askTask(id, name) { const desc = prompt(`اكتب المهمة للعميل (${name}):`); if(desc) { await sbClient.from('tasks').insert([{ client_id:id, description:desc, status:'pending'}]); loadTasks();} }
+        async function loadTasks() {
+            const { data } = await sbClient.from('tasks').select('*, client_records(name)').order('created_at', { ascending: false });
+            const tbody = document.getElementById('tasks-body');
+            tbody.innerHTML = '';
+            if(data) data.forEach(t => {
+                const cName = t.client_records ? t.client_records.name : '-';
+                const st = t.status === 'completed' ? '✅' : '⏳';
+                tbody.innerHTML += `<tr><td>${cName}</td><td>${t.description}</td><td>${st}</td><td><button class="btn btn-red" style="padding: 5px 10px; font-size:12px;" onclick="deleteTask('${t.id}')">حذف</button></td></tr>`;
+            });
+        }
+        async function deleteTask(id) { if(confirm('متأكد؟')) { await sbClient.from('tasks').delete().eq('id', id); loadTasks(); } }
+
+        async function loadLogs() {
+            const { data } = await sbClient.from('access_logs').select('*').order('accessed_at', { ascending: false }).limit(10);
+            const tbody = document.getElementById('logs-body');
+            tbody.innerHTML = '';
+            if(data) data.forEach(l => tbody.innerHTML += `<tr><td>${l.client_name}</td><td dir="ltr" style="font-size:13px;">${new Date(l.accessed_at).toLocaleString('ar-EG')}</td></tr>`);
+        }
+
+        async function deleteClient(id, name) {
+            if(confirm(`حذف العميل نهائياً؟`)) {
+                await sbClient.from('access_logs').delete().eq('client_name', name);
+                await sbClient.from('client_records').delete().eq('id', id);
+                refreshAll();
+            }
+        }
+
+        async function resetDevice(id, name) {
+            if(confirm(`فك ارتباط جهاز (${name})؟`)) {
+                await sbClient.from('client_records').update({ device_id: null }).eq('id', id);
+                alert('تم فك الجهاز بنجاح!');
+            }
+        }
         function copyLink(token) { navigator.clipboard.writeText(window.location.origin + '/client.html?token=' + token).then(()=>alert('تم النسخ')); }
-        async function askTask(id, name) { const desc = prompt(`اكتب المهمة للعميل (${name}):`); if(desc) { await sbClient.from('tasks').insert([{ client_id:id, description:desc, status:'pending'}]); alert('تمت إضافة المهمة');} }
-        async function logout() { await sbClient.auth.signOut(); window.location.href = 'index.html'; }
     </script>
 </body>
 </html>
