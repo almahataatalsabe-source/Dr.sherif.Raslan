@@ -11,12 +11,22 @@
         h2 { color: #004d00; margin-bottom: 5px; }
         h4 { color: #555; margin-top: 0; margin-bottom: 25px; }
         .task-card { background: #f9f9f9; border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; text-align: right; }
-        .task-desc { font-size: 16px; font-weight: bold; }
         .btn-complete { background-color: #004d00; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .btn-complete:hover { background-color: #003300; }
         .completed { opacity: 0.6; text-decoration: line-through; }
         .btn-done { background-color: #777; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: default; }
-        .error-msg { color: red; font-weight: bold; }
+        .error-msg { color: #b30000; font-weight: bold; font-size: 18px; padding: 20px; background: #ffe6e6; border-radius: 8px; }
+        
+        /* تصميم الشات */
+        #chat-widget { position: fixed; bottom: 20px; left: 20px; width: 300px; background: white; border-radius: 10px; box-shadow: 0 5px 20px rgba(0,0,0,0.2); border: 1px solid #ddd; display: none; flex-direction: column; overflow: hidden; z-index: 1000; }
+        #chat-header { background: #004d00; color: white; padding: 15px; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; }
+        #chat-messages { height: 300px; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; background: #fafafa; }
+        .msg { padding: 10px; border-radius: 8px; max-width: 85%; font-size: 14px; }
+        .msg.client { background: #004d00; color: white; align-self: flex-start; border-bottom-right-radius: 0; }
+        .msg.admin { background: #e0e0e0; color: #111; align-self: flex-end; border-bottom-left-radius: 0; }
+        #chat-input-container { display: flex; border-top: 1px solid #ddd; }
+        #chat-input { flex: 1; padding: 10px; border: none; outline: none; }
+        #chat-send { background: #111; color: white; border: none; padding: 10px 15px; cursor: pointer; font-weight: bold; }
+        #chat-toggle-btn { position: fixed; bottom: 20px; left: 20px; background: #004d00; color: white; border: none; border-radius: 50px; padding: 15px 25px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 999; }
     </style>
 </head>
 <body>
@@ -24,9 +34,22 @@
     <div class="container">
         <h2>المهام المطلوبة منك</h2>
         <h4 id="client-name">جاري التعرف على بياناتك...</h4>
-        
-        <div id="tasks-container">
-            <p>جاري تحميل المهام...</p>
+        <div id="tasks-container"><p>جاري تحميل المهام...</p></div>
+    </div>
+
+    <!-- زر فتح الشات -->
+    <button id="chat-toggle-btn" onclick="toggleChat()" style="display:none;">💬 تواصل مع الدكتور</button>
+
+    <!-- نافذة الشات -->
+    <div id="chat-widget">
+        <div id="chat-header" onclick="toggleChat()">
+            <span>تواصل مع الدكتور</span>
+            <span>▼</span>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-container">
+            <input type="text" id="chat-input" placeholder="اكتب رسالتك هنا...">
+            <button id="chat-send" onclick="sendMessage()">إرسال</button>
         </div>
     </div>
 
@@ -34,98 +57,104 @@
         const SUPABASE_URL = 'https://eknnzobkfiwcodlqrwhn.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrbm56b2JrZml3Y29kbHFyd2huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwNTU3ODIsImV4cCI6MjEwMzYzMTc4Mn0.bT_AzaWrTeDgltPO3a4O9h6i9oc-J5JrOGmXv5kYiys';
         const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        let currentClientId = null;
+        let chatInterval = null;
 
         window.onload = async () => {
-            // استخراج التوكن السري من الرابط
             const urlParams = new URLSearchParams(window.location.search);
             const token = urlParams.get('token');
 
-            if (!token) {
-                showError('رابط غير صالح. يرجى التأكد من الرابط المرسل إليك.');
-                return;
+            if (!token) { showError('رابط غير صالح.'); return; }
+            const { data: client, error: clientErr } = await sbClient.from('client_records').select('*').eq('access_token', token).single();
+            if (clientErr || !client) { showError('لا يوجد حساب مرتبط بهذا الرابط.'); return; }
+
+            // بصمة الجهاز
+            let localDeviceId = localStorage.getItem('my_device_id');
+            if (!client.device_id) {
+                if (!localDeviceId) {
+                    localDeviceId = 'dev_' + Math.random().toString(36).substr(2, 9) + Date.now();
+                    localStorage.setItem('my_device_id', localDeviceId);
+                }
+                await sbClient.from('client_records').update({ device_id: localDeviceId }).eq('id', client.id);
+            } else {
+                if (localDeviceId !== client.device_id) {
+                    showError('عفواً، هذا الرابط مخصص لجهاز العميل الأصلي فقط.');
+                    return;
+                }
             }
 
-            // البحث عن العميل باستخدام التوكن
-            const { data: client, error: clientErr } = await sbClient
-                .from('client_records')
-                .select('*')
-                .eq('access_token', token)
-                .single();
-
-            if (clientErr || !client) {
-                showError('لا يوجد حساب مرتبط بهذا الرابط أو انتهت صلاحيته.');
-                return;
-            }
-
+            currentClientId = client.id;
             document.getElementById('client-name').innerText = `أهلاً بك يا ${client.name}`;
-
-            // تسجيل الدخول في الأرشيف للإدارة
+            document.getElementById('chat-toggle-btn').style.display = 'block';
+            
             await sbClient.from('access_logs').insert([{ client_name: client.name }]);
-
-            // تحميل مهام العميل
-            loadClientTasks(client.id);
+            loadClientTasks();
         };
 
-        async function loadClientTasks(clientId) {
+        async function loadClientTasks() {
             const container = document.getElementById('tasks-container');
-            const { data: tasks, error } = await sbClient
-                .from('tasks')
-                .select('*')
-                .eq('client_id', clientId)
-                .order('created_at', { ascending: false });
-
-            if (error || !tasks || tasks.length === 0) {
-                container.innerHTML = '<p>لا توجد مهام مطلوبة منك حالياً.</p>';
-                return;
-            }
-
+            const { data: tasks } = await sbClient.from('tasks').select('*').eq('client_id', currentClientId).order('created_at', { ascending: false });
+            if (!tasks || tasks.length === 0) { container.innerHTML = '<p>لا توجد مهام مطلوبة منك حالياً.</p>'; return; }
             container.innerHTML = '';
             tasks.forEach(task => {
                 const isCompleted = task.status === 'completed';
-                const taskClass = isCompleted ? 'task-desc completed' : 'task-desc';
-                const btnHtml = isCompleted 
-                    ? `<button class="btn-done">مكتملة ✅</button>`
-                    : `<button class="btn-complete" onclick="markCompleted('${task.id}', '${clientId}')">إتمام المهمة</button>`;
-
-                container.innerHTML += `
-                    <div class="task-card">
-                        <div class="${taskClass}">${task.description}</div>
-                        <div>${btnHtml}</div>
-                    </div>
-                `;
+                const btnHtml = isCompleted ? `<button class="btn-done">مكتملة ✅</button>` : `<button class="btn-complete" onclick="markCompleted('${task.id}')">إتمام المهمة</button>`;
+                container.innerHTML += `<div class="task-card"><div class="task-desc ${isCompleted ? 'completed' : ''}">${task.description}</div><div>${btnHtml}</div></div>`;
             });
         }
 
-        async function markCompleted(taskId, clientId) {
-            const { error } = await sbClient
-                .from('tasks')
-                .update({ status: 'completed' })
-                .eq('id', taskId);
-
-            if (error) {
-                alert('حدث خطأ أثناء تحديث المهمة.');
-            } else {
-                loadClientTasks(clientId); // إعادة تحميل المهام لتحديث الشكل
-            }
+        async function markCompleted(taskId) {
+            await sbClient.from('tasks').update({ status: 'completed' }).eq('id', taskId);
+            loadClientTasks(); 
         }
 
         function showError(msg) {
             document.getElementById('client-name').innerText = '';
-            document.getElementById('tasks-container').innerHTML = `<p class="error-msg">${msg}</p>`;
+            document.getElementById('tasks-container').innerHTML = `<div class="error-msg">${msg}</div>`;
         }
+
+        // --- نظام الشات ---
+        function toggleChat() {
+            const widget = document.getElementById('chat-widget');
+            if (widget.style.display === 'none' || widget.style.display === '') {
+                widget.style.display = 'flex';
+                loadMessages();
+                chatInterval = setInterval(loadMessages, 3000); // تحديث الرسايل كل 3 ثواني
+            } else {
+                widget.style.display = 'none';
+                clearInterval(chatInterval);
+            }
+        }
+
+        async function loadMessages() {
+            if(!currentClientId) return;
+            const { data } = await sbClient.from('messages').select('*').eq('client_id', currentClientId).order('created_at', { ascending: true });
+            const box = document.getElementById('chat-messages');
+            box.innerHTML = '';
+            if(data) {
+                data.forEach(m => {
+                    const msgClass = m.sender === 'client' ? 'msg client' : 'msg admin';
+                    box.innerHTML += `<div class="${msgClass}">${m.message}</div>`;
+                });
+                box.scrollTop = box.scrollHeight;
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if(!text || !currentClientId) return;
+            
+            input.value = '';
+            await sbClient.from('messages').insert([{ client_id: currentClientId, sender: 'client', message: text }]);
+            loadMessages();
+        }
+
+        // إرسال بالضغط على Enter
+        document.getElementById('chat-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') sendMessage();
+        });
     </script>
-    <!--Start of Tawk.to Script-->
-<script type="text/javascript">
-var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-(function(){
-var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
-s1.async=true;
-s1.src='https://embed.tawk.to/6a9427d179e6f6344bbeb065/1k19bn2tk';
-s1.charset='UTF-8';
-s1.setAttribute('crossorigin','*');
-s0.parentNode.insertBefore(s1,s0);
-})();
-</script>
-<!--End of Tawk.to Script-->
 </body>
 </html>
