@@ -4,15 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>منصة د. شريف رسلان - المتابعة النفسية</title>
-    <!-- استدعاء مكتبة قاعدة البيانات -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin-top: 100px; text-align: center; }
         .login-container { background: white; width: 350px; margin: auto; padding: 30px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
         h2 { color: #333; margin-bottom: 20px; }
-        input { width: 90%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; }
-        button { width: 100%; padding: 12px; background-color: #0056b3; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 10px; font-weight: bold;}
-        button:hover { background-color: #004494; }
+        input { width: 90%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; box-sizing: border-box;}
+        button { width: 100%; padding: 12px; background-color: #004d00; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 10px; font-weight: bold;}
+        button:hover { background-color: #002200; }
     </style>
 </head>
 <body>
@@ -21,11 +20,46 @@
         <h2>تسجيل الدخول للمنصة</h2>
         <input type="email" id="email" placeholder="البريد الإلكتروني للعميل أو الأدمن">
         <input type="password" id="password" placeholder="كلمة المرور">
-        <button onclick="loginUser(document.getElementById('email').value, document.getElementById('password').value)">دخول</button>
+        <button onclick="loginUser()">دخول</button>
     </div>
 
-    <!-- ربط كود العمليات اللي جهزناه -->
-    <script src="app.js"></script>
+    <script>
+        const SUPABASE_URL = 'https://eknnzobkfiwcodlqrwhn.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrbm56b2JrZml3Y29kbHFyd2huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwNTU3ODIsImV4cCI6MjEwMzYzMTc4Mn0.bT_AzaWrTeDgltPO3a4O9h6i9oc-J5JrOGmXv5kYiys';
+        const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        async function loginUser() {
+            const emailVal = document.getElementById('email').value;
+            const passVal = document.getElementById('password').value;
+            
+            const { error } = await sbClient.auth.signInWithPassword({
+                email: emailVal,
+                password: passVal,
+            });
+
+            if (error) {
+                alert("خطأ في تسجيل الدخول: تأكد من البريد وكلمة المرور.");
+            } else {
+                checkUserRole();
+            }
+        }
+
+        async function checkUserRole() {
+            const { data: { user } } = await sbClient.auth.getUser();
+            if (user) {
+                const { data: profile } = await sbClient
+                    .from('profiles')
+                    .select('role')
+                    .eq('id', user.id)
+                    .single();
+                    
+                if (profile && profile.role === 'admin') {
+                    window.location.href = 'admin.html';
+                } else {
+                    window.location.href = 'client.html';
+                }
+            }
+        }
+    </script>
 </body>
 </html>
