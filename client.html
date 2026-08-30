@@ -3,67 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>بوابة المتابعة الخاصة بك</title>
+    <title>متابعة المهام اليومية</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f9f9f9; margin: 0; padding: 30px; color: #000; }
-        .container { max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
-        h1 { color: #003300; text-align: center; }
-        .task-card { background: #f4f4f4; padding: 15px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .task-done { background: #e6f2e6; text-decoration: line-through; color: #555; }
-        button { background-color: #004d00; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
-        button:hover { background-color: #002200; }
-        .logout-btn { display: block; margin: 20px auto 0; background: #111; }
+        body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; color: #111; }
+        .container { background: white; max-width: 600px; margin: 40px auto; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-top: 5px solid #004d00; text-align: center; }
+        h2 { color: #004d00; margin-bottom: 5px; }
+        h4 { color: #555; margin-top: 0; margin-bottom: 25px; }
+        .task-card { background: #f9f9f9; border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; text-align: right; }
+        .task-desc { font-size: 16px; font-weight: bold; }
+        .btn-complete { background-color: #004d00; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn-complete:hover { background-color: #003300; }
+        .completed { opacity: 0.6; text-decoration: line-through; }
+        .btn-done { background-color: #777; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: default; }
+        .error-msg { color: red; font-weight: bold; }
     </style>
 </head>
 <body>
+
     <div class="container">
-        <h1>المهام المطلوبة منك</h1>
-        <div id="tasksList">جاري تحميل المهام...</div>
-        <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+        <h2>المهام المطلوبة منك</h2>
+        <h4 id="client-name">جاري التعرف على بياناتك...</h4>
+        
+        <div id="tasks-container">
+            <p>جاري تحميل المهام...</p>
+        </div>
     </div>
 
     <script>
         const SUPABASE_URL = 'https://eknnzobkfiwcodlqrwhn.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrbm56b2JrZml3Y29kbHFyd2huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwNTU3ODIsImV4cCI6MjEwMzYzMTc4Mn0.bT_AzaWrTeDgltPO3a4O9h6i9oc-J5JrOGmXv5kYiys';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        async function loadMyTasks() {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return window.location.href = 'index.html';
+        window.onload = async () => {
+            // استخراج التوكن السري من الرابط
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
 
-            const { data, error } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
-            const list = document.getElementById('tasksList');
-            list.innerHTML = '';
+            if (!token) {
+                showError('رابط غير صالح. يرجى التأكد من الرابط المرسل إليك.');
+                return;
+            }
 
-            if (data && data.length > 0) {
-                data.forEach(task => {
-                    const isDone = task.is_completed;
-                    list.innerHTML += `
-                        <div class="task-card ${isDone ? 'task-done' : ''}">
-                            <span>${task.description}</span>
-                            <button onclick="toggleTask('${task.id}', ${isDone})">
-                                ${isDone ? 'تراجع' : 'إتمام ✔️'}
-                            </button>
-                        </div>
-                    `;
-                });
+            // البحث عن العميل باستخدام التوكن
+            const { data: client, error: clientErr } = await sbClient
+                .from('client_records')
+                .select('*')
+                .eq('access_token', token)
+                .single();
+
+            if (clientErr || !client) {
+                showError('لا يوجد حساب مرتبط بهذا الرابط أو انتهت صلاحيته.');
+                return;
+            }
+
+            document.getElementById('client-name').innerText = `أهلاً بك يا ${client.name}`;
+
+            // تسجيل الدخول في الأرشيف للإدارة
+            await sbClient.from('access_logs').insert([{ client_name: client.name }]);
+
+            // تحميل مهام العميل
+            loadClientTasks(client.id);
+        };
+
+        async function loadClientTasks(clientId) {
+            const container = document.getElementById('tasks-container');
+            const { data: tasks, error } = await sbClient
+                .from('tasks')
+                .select('*')
+                .eq('client_id', clientId)
+                .order('created_at', { ascending: false });
+
+            if (error || !tasks || tasks.length === 0) {
+                container.innerHTML = '<p>لا توجد مهام مطلوبة منك حالياً.</p>';
+                return;
+            }
+
+            container.innerHTML = '';
+            tasks.forEach(task => {
+                const isCompleted = task.status === 'completed';
+                const taskClass = isCompleted ? 'task-desc completed' : 'task-desc';
+                const btnHtml = isCompleted 
+                    ? `<button class="btn-done">مكتملة ✅</button>`
+                    : `<button class="btn-complete" onclick="markCompleted('${task.id}', '${clientId}')">إتمام المهمة</button>`;
+
+                container.innerHTML += `
+                    <div class="task-card">
+                        <div class="${taskClass}">${task.description}</div>
+                        <div>${btnHtml}</div>
+                    </div>
+                `;
+            });
+        }
+
+        async function markCompleted(taskId, clientId) {
+            const { error } = await sbClient
+                .from('tasks')
+                .update({ status: 'completed' })
+                .eq('id', taskId);
+
+            if (error) {
+                alert('حدث خطأ أثناء تحديث المهمة.');
             } else {
-                list.innerHTML = '<p style="text-align:center;">لا توجد مهام مطلوبة منك حالياً.</p>';
+                loadClientTasks(clientId); // إعادة تحميل المهام لتحديث الشكل
             }
         }
 
-        async function toggleTask(taskId, currentStatus) {
-            await supabase.from('tasks').update({ is_completed: !currentStatus }).eq('id', taskId);
-            loadMyTasks(); // إعادة تحميل القائمة
+        function showError(msg) {
+            document.getElementById('client-name').innerText = '';
+            document.getElementById('tasks-container').innerHTML = `<p class="error-msg">${msg}</p>`;
         }
-
-        async function logout() {
-            await supabase.auth.signOut();
-            window.location.href = 'index.html';
-        }
-
-        loadMyTasks();
     </script>
 </body>
 </html>
